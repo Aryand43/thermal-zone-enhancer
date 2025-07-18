@@ -28,3 +28,10 @@ def detect_thermal_zone(image: np.ndarray) -> Tuple[int, int, int, int]:
     end = time.time()
     print(f"Thermal zone detection latency: {end - start:.6f} seconds")
     return (x, y, w, h)
+
+def crop_to_zone(image: np.ndarray, bbox: tuple[int, int, int, int]) -> np.ndarray:
+    start = time.time()
+    x, y, w, h = bbox
+    cropped = image[y:y+h, x:x+w]
+    end = time.time()
+    return cropped 
