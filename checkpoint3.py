@@ -5,65 +5,55 @@ import cv2.ximgproc
 
 def adaptive_enhance_thermal_image(image: np.ndarray) -> np.ndarray:
     start = time.time()
+    if image.dtype != np.uint8: image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
-    if not isinstance(image, np.ndarray) or image.size == 0 or image.dtype != np.uint8:
-        raise ValueError("Input must be a non-empty uint8 NumPy array.")
     if len(image.shape) == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
     elif image.shape[2] == 4:
         image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
-    elif image.shape[2] != 3:
-        raise ValueError("Unsupported image format.")
 
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    noise_std = np.std(gray)
-    h = 4 if noise_std < 10 else 7 if noise_std < 20 else 10
-
-    if noise_std >= 5:
-        image = cv2.fastNlMeansDenoisingColored(image, None, h, h, 7, 21)
-
-    filtered = cv2.bilateralFilter(image, d=9, sigmaColor=20, sigmaSpace=10)
-    lab = cv2.cvtColor(filtered, cv2.COLOR_RGB2LAB)
+    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
     l, a, b = cv2.split(lab)
 
-    clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(16, 16))
+    clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8))
     l_clahe = clahe.apply(l)
 
-    lap_var = cv2.Laplacian(l_clahe, cv2.CV_64F).var()
-    if lap_var < 150:
-        blurred = cv2.GaussianBlur(l_clahe, (3, 3), 0)
-        l_sharp = cv2.addWeighted(l_clahe, 1.5, blurred, -0.5, 0)
-    else:
-        l_sharp = l_clahe
+    # Light edge enhancement
+    edge = cv2.Laplacian(l_clahe, cv2.CV_64F)
+    edge = np.clip(edge, 0, 255).astype(np.uint8)
+    l_edge = cv2.addWeighted(l_clahe, 1.2, edge, 0.3, 0)
 
-    final_lab = cv2.merge((l_sharp, a, b))
-    final_image = cv2.cvtColor(final_lab, cv2.COLOR_LAB2RGB)
-
-    end = time.time()
-    print(f"Adaptive enhancement latency: {end - start:.6f} seconds")
-    return final_image
+    enhanced = cv2.merge((l_edge, a, b))
+    out = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
+    print(f"Adaptive enhancement latency: {time.time() - start:.6f} seconds")
+    return out
 
 def guided_sharpen_thermal_image(image: np.ndarray) -> np.ndarray:
     start = time.time()
-    if not isinstance(image, np.ndarray) or image.size == 0 or image.dtype != np.uint8:
-        raise ValueError("Input must be a non-empty uint8 NumPy array.")
     if len(image.shape) == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-    elif image.shape[2] == 4:
-        image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
-    elif image.shape[2] != 3:
-        raise ValueError("Unsupported image format.")
 
     guide = image.copy()
-    filtered = cv2.ximgproc.guidedFilter(guide=guide, src=image, radius=8, eps=100, dDepth=-1)
+    filtered = cv2.ximgproc.guidedFilter(guide=guide, src=image, radius=6, eps=40, dDepth=-1)
 
-    lab = cv2.cvtColor(filtered, cv2.COLOR_RGB2LAB)
+    sharp = cv2.addWeighted(image, 1.8, filtered, -0.8, 0)  # more aggressive
+    print(f"Guided sharpening latency: {time.time() - start:.6f} seconds")
+    return np.clip(sharp, 0, 255).astype(np.uint8)
+
+def apply_super_resolution(image: np.ndarray, model_path: str = 'EDSR_x2.pb', scale: int = 2) -> np.ndarray:
+    start = time.time()
+    sr = cv2.dnn_superres.DnnSuperResImpl_create()
+    sr.readModel(model_path)
+    sr.setModel('edsr', scale)
+    upscaled = sr.upsample(image)
+    lab = cv2.cvtColor(upscaled, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    blurred = cv2.GaussianBlur(l, (5, 5), sigmaX=1.0)
-    l_sharp = cv2.addWeighted(l, 1.5, blurred, -0.5, 0)
-
-    merged = cv2.merge((l_sharp, a, b))
-    enhanced_image = cv2.cvtColor(merged, cv2.COLOR_LAB2RGB)
+    l = cv2.equalizeHist(cv2.GaussianBlur(l, (3, 3), 0))
+    sharpened = cv2.Laplacian(l, cv2.CV_64F)
+    l_final = cv2.addWeighted(l, 1.2, sharpened.astype(np.uint8), -0.2, 0)
+    final = cv2.merge((l_final, a, b))
+    upscaled_image = cv2.cvtColor(final, cv2.COLOR_LAB2BGR)
     end = time.time()
-    print(f"Guided sharpening latency: {end - start:.6f} seconds")
-    return enhanced_image
+    print(f"Super resolution latency: {end - start:.6f} seconds")
+    return upscaled_image
+

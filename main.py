@@ -4,7 +4,7 @@ import numpy as np
 from typing import Tuple
 from checkpoint1 import detect_thermal_zone, crop_to_zone
 from checkpoint2 import enhance_resolution
-from checkpoint3 import adaptive_enhance_thermal_image, guided_sharpen_thermal_image
+from checkpoint3 import adaptive_enhance_thermal_image, guided_sharpen_thermal_image, apply_super_resolution
 
 input_dir = "data"
 output1_dir = "checkpoint_1_detect_and_crop"
@@ -39,11 +39,17 @@ def run_quality_enhancement_and_final_postprocess():
             continue
         try:
             enhanced = enhance_resolution(image, scale=4)
+            output_path_stage2 = os.path.join(output2_dir, filename)
+            cv2.imwrite(output_path_stage2, enhanced)
+
             adaptively_enhanced = adaptive_enhance_thermal_image(enhanced)
-            final_image = guided_sharpen_thermal_image(adaptively_enhanced)
-            output_path = os.path.join(output3_dir, filename)
-            cv2.imwrite(output_path, final_image)
-        except:
+            sharpened = guided_sharpen_thermal_image(adaptively_enhanced)
+            super_res = apply_super_resolution(sharpened, model_path='EDSR_x4.pb', scale=4)
+
+            output_path_stage3 = os.path.join(output3_dir, filename)
+            cv2.imwrite(output_path_stage3, super_res)
+        except Exception as e:
+            print(f"Error processing {filename}: {e}")
             continue
 
 if __name__ == "__main__":
