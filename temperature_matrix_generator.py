@@ -6,14 +6,15 @@ import time
 from skimage.color import rgb2lab, deltaE_ciede2000
 import matplotlib.pyplot as plt
 
-def map_temperatures_from_lut(image_path: str, lut_path: str, save_path: str, delta_e_threshold: float = 35.0) -> np.ndarray:
-    """
-    Maps per-pixel temperatures from thermal imagery using RGB-to-temperature LUT
-    with ΔE-CIEDE2000 precision filtering.
-
-    Matches: Step 7 (concurrent) in invention. Produces °C matrix aligned with enhanced image.
-    Novelty: Thermal-only mapping with ΔE-based LAB color distance filtering.
-    """
+def map_temperatures_from_lut(
+    image_path: str,
+    lut_path: str,
+    save_path: str,
+    delta_e_threshold: float = 35.0,
+    fallback_rgb_match: bool = True,
+    report_coverage: bool = True,
+    return_nan_mask: bool = False
+) -> np.ndarray:
     start_time = time.perf_counter()
 
     image = cv2.imread(image_path)
@@ -24,7 +25,6 @@ def map_temperatures_from_lut(image_path: str, lut_path: str, save_path: str, de
     with open(lut_path, 'r') as f:
         lut = json.load(f)
 
-    # Prepare image and LUT in LAB color space
     height, width, _ = image_rgb.shape
     rgb_array = image_rgb.reshape(-1, 3).astype(np.uint8)
     temperature_matrix = np.full((height * width,), np.nan, dtype=np.float32)
@@ -34,21 +34,32 @@ def map_temperatures_from_lut(image_path: str, lut_path: str, save_path: str, de
     rgb_lab = rgb2lab(rgb_array[np.newaxis, :, :]).reshape(-1, 3)
 
     match_count = 0
+    fallback_count = 0
+
     for idx, pixel_lab in enumerate(rgb_lab):
         deltas = deltaE_ciede2000(np.tile(pixel_lab, (unique_lab.shape[0], 1)), unique_lab)
-        min_delta_idx = np.argmin(deltas)
-        if deltas[min_delta_idx] < delta_e_threshold:
-            key = ','.join(map(str, unique_rgb[min_delta_idx]))
+        min_idx = np.argmin(deltas)
+        if deltas[min_idx] < delta_e_threshold:
+            key = ','.join(map(str, unique_rgb[min_idx]))
             temperature_matrix[idx] = lut[key]
             match_count += 1
+        elif fallback_rgb_match:
+            rgb_key = ','.join(map(str, rgb_array[idx]))
+            if rgb_key in lut:
+                temperature_matrix[idx] = lut[rgb_key]
+                fallback_count += 1
 
-    print(f"[generate_temperature_matrix_from_roi] Matched {match_count}/{len(rgb_lab)} pixels with ΔE < {delta_e_threshold}")
-
+    coverage = (np.count_nonzero(~np.isnan(temperature_matrix)) / len(temperature_matrix)) * 100
     temperature_matrix = temperature_matrix.reshape((height, width))
     np.save(save_path, temperature_matrix)
 
-    end_time = time.perf_counter()
-    print(f"[generate_temperature_matrix_from_roi] Execution time: {end_time - start_time:.4f} seconds")
+    if report_coverage:
+        print(f"[ΔE LUT Mapping] Matched: {match_count}, Fallback: {fallback_count}, Coverage: {coverage:.2f}%")
+    print(f"[ΔE LUT Mapping] Saved: {save_path}")
+    print(f"[ΔE LUT Mapping] Time: {time.perf_counter() - start_time:.2f}s")
+
+    if return_nan_mask:
+        return temperature_matrix, np.isnan(temperature_matrix).astype(np.uint8)
     return temperature_matrix
 
 def visualize_temperature_matrix(matrix: np.ndarray, title: str = "Temperature Heatmap", save_path: str = None):
@@ -61,7 +72,7 @@ def visualize_temperature_matrix(matrix: np.ndarray, title: str = "Temperature H
 
     plt.figure(figsize=(10, 8))
     plt.imshow(matrix, cmap='hot', interpolation='nearest', vmin=vmin, vmax=vmax)
-    plt.colorbar(label="Temperature (°C")
+    plt.colorbar(label="Temperature (°C)")
     plt.title(title)
     plt.axis('off')
 

@@ -16,7 +16,15 @@ for i in range(1, 90):
     heatmap_path = f"{plot_output_dir}/{i}.png"
 
     try:
-        temp_matrix = map_temperatures_from_lut(image_path, lut_path, save_path)
+        temp_matrix = map_temperatures_from_lut(
+            image_path=image_path,
+            lut_path=lut_path,
+            save_path=save_path,
+            delta_e_threshold=30.0,
+            fallback_rgb_match=True,
+            report_coverage=True,
+            return_nan_mask=False
+        )
         visualize_temperature_matrix(temp_matrix, title=f"Frame {i} Temperature Heatmap", save_path=heatmap_path)
     except Exception as e:
         print(f"[ERROR] Failed on {i}.tiff: {e}")
