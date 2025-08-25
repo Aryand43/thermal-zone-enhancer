@@ -1,7 +1,6 @@
 import os
 import numpy as np
-from generate_temperature_matrix import generate_temperature_matrix_from_roi
-from generate_temperature_matrix import visualize_temperature_matrix  
+from temperature_matrix_generator import map_temperatures_from_lut, visualize_temperature_matrix
 
 input_dir = "checkpoint_1_detect_and_crop"
 output_dir = "temperature_matrices"
@@ -17,7 +16,7 @@ for i in range(1, 90):
     heatmap_path = f"{plot_output_dir}/{i}.png"
 
     try:
-        temp_matrix = generate_temperature_matrix_from_roi(image_path, lut_path, save_path)
+        temp_matrix = map_temperatures_from_lut(image_path, lut_path, save_path)
         visualize_temperature_matrix(temp_matrix, title=f"Frame {i} Temperature Heatmap", save_path=heatmap_path)
     except Exception as e:
         print(f"[ERROR] Failed on {i}.tiff: {e}")

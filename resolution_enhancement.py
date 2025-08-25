@@ -2,7 +2,14 @@ import cv2
 import numpy as np
 import time
 
-def enhance_resolution(image: np.ndarray, scale: int) -> np.ndarray:
+def upsample_using_lanczos(image: np.ndarray, scale: int) -> np.ndarray:
+    """
+    Upsamples thermal imagery using Lanczos4 interpolation, followed by LAB-based
+    perceptual enhancement and light denoising.
+
+    Matches: Step 3 – Resolution enhancement in invention pipeline.
+    Novelty: Retains spatial fidelity while preparing data for further refinement.
+    """
     start = time.time()
     if not isinstance(image, np.ndarray) or image.size == 0:
         raise ValueError("Input must be a non-empty NumPy array.")

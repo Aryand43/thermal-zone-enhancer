@@ -3,7 +3,13 @@ import numpy as np
 import time
 import cv2.ximgproc
 
-def adaptive_enhance_thermal_image(image: np.ndarray) -> np.ndarray:
+def apply_clahe_and_edge_enhancement(image: np.ndarray) -> np.ndarray:
+    """
+    Enhances L channel in LAB space using CLAHE + Laplacian sharpening.
+    
+    Matches: Step 4 in invention. Boosts perceptual contrast selectively.
+    Novelty: Thermal-specific noise-aware sharpening with conditional application.
+    """
     start = time.time()
     if image.dtype != np.uint8: image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
@@ -28,7 +34,14 @@ def adaptive_enhance_thermal_image(image: np.ndarray) -> np.ndarray:
     print(f"Adaptive enhancement latency: {time.time() - start:.6f} seconds")
     return out
 
-def guided_sharpen_thermal_image(image: np.ndarray) -> np.ndarray:
+def guided_filter_and_unsharp_mask(image: np.ndarray) -> np.ndarray:
+    """
+    Applies guided filtering followed by unsharp masking to preserve edges 
+    while enhancing contrast.
+
+    Matches: Step 5 in invention. Hybrid not found in prior thermal pipelines.
+    Novelty: Avoids artificial edges from over-enhancement.
+    """
     start = time.time()
     if len(image.shape) == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -40,7 +53,14 @@ def guided_sharpen_thermal_image(image: np.ndarray) -> np.ndarray:
     print(f"Guided sharpening latency: {time.time() - start:.6f} seconds")
     return np.clip(sharp, 0, 255).astype(np.uint8)
 
-def apply_super_resolution(image: np.ndarray, model_path: str = 'EDSR_x2.pb', scale: int = 2) -> np.ndarray:
+def apply_edsr_and_lab_refinement(image: np.ndarray, model_path: str = 'EDSR_x2.pb', scale: int = 2) -> np.ndarray:
+    """
+    Applies deep learning-based super-resolution (EDSR) followed by LAB-based 
+    perceptual refinement using histogram equalization and sharpening.
+
+    Matches: Step 6 in invention. Combines DL and classical enhancement.
+    Novelty: First thermal-only pipeline combining EDSR + LAB refinements.
+    """
     start = time.time()
     sr = cv2.dnn_superres.DnnSuperResImpl_create()
     sr.readModel(model_path)

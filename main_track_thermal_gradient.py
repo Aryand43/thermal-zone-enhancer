@@ -1,4 +1,4 @@
-from thermal_gradient_tracker import (
+from thermal_gradient_analysis import (
     track_melt_pool_boundary_and_gradient,
     visualize_hot_pixels,
     calculate_pixel_velocities,

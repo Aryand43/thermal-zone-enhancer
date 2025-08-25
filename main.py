@@ -2,9 +2,13 @@ import os
 import cv2
 import numpy as np
 from typing import Tuple
-from checkpoint1 import detect_thermal_zone, crop_to_zone
-from checkpoint2 import enhance_resolution
-from checkpoint3 import adaptive_enhance_thermal_image, guided_sharpen_thermal_image, apply_super_resolution
+from thermal_roi_detection import detect_thermal_zone, crop_to_zone
+from resolution_enhancement import enhance_resolution
+from adaptive_sharpening import (
+    adaptive_enhance_thermal_image,
+    guided_sharpen_thermal_image,
+    apply_super_resolution
+)
 
 input_dir = "data"
 output1_dir = "checkpoint_1_detect_and_crop"
