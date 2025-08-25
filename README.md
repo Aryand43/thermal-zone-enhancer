@@ -1,41 +1,88 @@
-# thermal-zone-enhancer
+# Thermal Zone Enhancer
 
-A precision thermal image enhancement pipeline for extracting and improving regions of interest in `.tiff` images. Built for materials science and melt pool analysis.
+A modular pipeline for precision thermal image enhancement and temperature mapping. Built for thermal-only datasets (e.g. melt pool monitoring, additive manufacturing).
 
-## Features
-- Thermal zone detection via contour-based segmentation
-- High-quality upscaling with `cv2.INTER_LANCZOS4`
-- LAB color space perceptual enhancement
-- Adaptive denoising using `cv2.fastNlMeansDenoisingColored`
-- Edge-aware filtering and unsharp masking for fine structure sharpening
-- Modular batch processing with checkpointed outputs
+## What This Does
 
-## Pipeline Overview
+```
+.tiff → [detect ROI] → [adaptive enhance] → [super-res] → [RGB-to-°C] → [track gradients]
+```
 
-### 1. Detection and Cropping
-- Converts input to grayscale
-- Extracts the largest thermal region using contour area
-- Saves to `checkpoint_1_detect_and_crop/`
+1. Detects hottest zone in thermal image
+2. Enhances resolution using CLAHE + Laplacian + EDSR
+3. Converts RGB to °C via ΔE-based LUT mapping
+4. Tracks hot pixel motion and gradient over time
 
-### 2. Quality Enhancement
-- Upscales image via Lanczos4 interpolation
-- Converts to LAB color space
-- Applies adaptive denoising and CLAHE on L channel
-- Sharpens low-contrast images selectively
-- Saves to `checkpoint_2_quality_enhancement/`
+## Folder Structure
 
-### 3. Guided Post-Processing
-- Applies guided filtering and unsharp masking for detail preservation
-- Final results saved to `checkpoint_3_adaptive_postprocess/`
+```
+input_thermal_images/             Raw .tiff or thermal .png
+checkpoint_1_roi_crop/            ROI cropped (thermal zone only)
+checkpoint_2_adaptive_enhance/    Enhanced (CLAHE + sharpening)
+checkpoint_3_adaptive_postprocess/ Final EDSR + LAB-tuned output
+temperature_matrices/             Per-pixel °C matrices (.npy)
+lut_calibration/                  RGB to °C LUT (JSON)
+thermal_gradient_outputs/         Velocity and gradient plots
+```
 
-## Requirements
-- numpy
-- opencv-python
-- opencv-contrib-python
-- time
-- (optional) flirimageextractor — for FLIR JPEG thermal metadata
+## How to Run
 
-## Usage
-1. Place `.tiff` images in the `data/` directory.
-2. Run `main.py`.
-3. Enhanced outputs will be saved in corresponding checkpoint folders.
+```bash
+python main.py
+```
+
+Runs full preprocessing pipeline:
+
+* Detects thermal ROI
+* Crops, enhances, upscales
+* Saves intermediate outputs
+
+```bash
+python main_generate_temp_matrices.py
+```
+
+Uses RGB-to-temp LUT (`color_temp_lut.json`) to produce:
+
+* `.npy` temperature matrix
+* Optional `.png` heatmap
+
+```bash
+python main_track_thermal_gradient.py
+```
+
+Loads `.npy` matrices, tracks hot zones, and plots gradient/velocity trends.
+
+## RGB to °C Mapping (ΔE Matching)
+
+Uses LAB-space ΔE (CIEDE2000) to match each RGB pixel to the closest LUT entry. If ΔE < 25, assigns the corresponding °C from LUT.
+
+**Note:** Accuracy depends heavily on LUT coverage. Generate it via `color_temp_mapping.py` by manually clicking on reference images to map RGB values to known temperatures.
+
+## Key Modules
+
+| File                              | Purpose                              |
+| --------------------------------- | ------------------------------------ |
+| `main.py`                         | Full pipeline runner                 |
+| `main_generate_temp_matrices.py`  | RGB to °C matrix generator           |
+| `main_track_thermal_gradient.py`  | Thermal motion analysis              |
+| `color_temp_mapping.py`           | Manual LUT builder (click RGB ↔ °C)  |
+| `temperature_matrix_generator.py` | ΔE-matching logic                    |
+| `thermal_gradient_analysis.py`    | Hot pixel tracker                    |
+| `adaptive_sharpening.py`          | CLAHE + Laplacian + guided filtering |
+| `resolution_enhancement.py`       | LAB denoise + EDSR                   |
+| `thermal_roi_detection.py`        | ROI crop using contours              |
+
+## Limitations
+
+* LUT-based mapping can miss pixels if ΔE exceeds threshold
+* Motion tracker is currently 1D (horizontal shifts only)
+* Super-resolution assumes availability of `.pb` EDSR checkpoint
+
+## License
+
+MIT
+
+## Authors
+
+Aryan Dutt, Shubham Chandra, Paulo Jorge Da Silva Bartolo
+(Part of formal invention disclosure on adaptive thermal imaging pipelines)

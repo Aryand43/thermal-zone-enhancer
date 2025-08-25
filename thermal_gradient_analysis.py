@@ -6,7 +6,7 @@ def track_melt_pool_boundary_and_gradient(temp_dir: str, pixel_resolution: float
     file_names = sorted([f for f in os.listdir(temp_dir) if f.endswith('.npy')],
                         key=lambda x: int(os.path.splitext(x)[0]))
 
-    hot_pixel_coords = []  # Stores (row, col) tuples per frame
+    hot_pixel_coords = []
     position_shifts = []
     thermal_gradients = []
 
@@ -36,14 +36,14 @@ def track_melt_pool_boundary_and_gradient(temp_dir: str, pixel_resolution: float
             prev_mean_col = np.mean(prev_cols)
             curr_mean_col = np.mean(curr_cols)
 
-            dx = curr_mean_col - prev_mean_col
+            dx = abs(curr_mean_col - prev_mean_col)
             dxs.append(dx)
 
             prev_temp = np.load(os.path.join(temp_dir, file_names[i - 1]))[row, int(prev_mean_col)]
             curr_temp = np.load(os.path.join(temp_dir, file_names[i]))[row, int(curr_mean_col)]
             dT = curr_temp - prev_temp
 
-            grad = dT / (dx * pixel_resolution + 1e-8)  # avoid div by zero
+            grad = dT / (dx * pixel_resolution + 1e-8)
             grads.append(grad)
 
         position_shifts.append(dxs)
@@ -51,19 +51,14 @@ def track_melt_pool_boundary_and_gradient(temp_dir: str, pixel_resolution: float
 
     return hot_pixel_coords, position_shifts, thermal_gradients
 
-
 def calculate_pixel_velocities(position_shifts, pixel_resolution=31.3, time_step=0.0125):
     pixel_velocities = []
     for shifts in position_shifts:
-        velocities = [(dx * pixel_resolution) / time_step for dx in shifts]
+        velocities = [(abs(dx) * pixel_resolution) / time_step for dx in shifts]
         pixel_velocities.append(velocities)
     return pixel_velocities
 
-
 def calculate_weighted_velocities(temp_dir, position_shifts, temp_range, pixel_resolution, time_step):
-    """
-    Calculates weighted velocity per frame for hot pixels in a specific temperature range.
-    """
     velocity_per_frame = []
     temp_files = sorted([f for f in os.listdir(temp_dir) if f.endswith('.npy')])
 
@@ -74,12 +69,12 @@ def calculate_weighted_velocities(temp_dir, position_shifts, temp_range, pixel_r
             velocity_per_frame.append(0)
             continue
 
-        # Handle invalid or missing shift
-        if not isinstance(position_shifts[idx], (tuple, list)) or len(position_shifts[idx]) != 2:
+        shifts = position_shifts[idx - 1]
+        if not isinstance(shifts, (tuple, list)) or len(shifts) == 0:
             velocity_per_frame.append(0)
             continue
 
-        dx, dy = position_shifts[idx]
+        mean_dx = np.mean([abs(dx) for dx in shifts])
         mask = (curr_temp_matrix >= temp_range[0]) & (curr_temp_matrix <= temp_range[1])
         weight = np.sum(mask)
 
@@ -87,14 +82,11 @@ def calculate_weighted_velocities(temp_dir, position_shifts, temp_range, pixel_r
             velocity_per_frame.append(0)
             continue
 
-        displacement = np.sqrt(dx**2 + dy**2) #insert abs val
-        displacement_um = displacement * pixel_resolution  # in micrometers
+        displacement_um = mean_dx * pixel_resolution
         velocity = (displacement_um / time_step) * weight
         velocity_per_frame.append(velocity)
 
     return velocity_per_frame
-
-
 
 def plot_velocity_time_graph(pixel_velocities, output_path="thermal_gradient_outputs/velocity_plot.png"):
     avg_velocities = [np.nanmean(v) if len(v) > 0 else np.nan for v in pixel_velocities]
@@ -110,7 +102,6 @@ def plot_velocity_time_graph(pixel_velocities, output_path="thermal_gradient_out
     plt.savefig(output_path)
     plt.close()
     print(f"Velocity graph saved to '{output_path}'.")
-
 
 def visualize_hot_pixels(hot_pixel_coords_file: str, output_dir: str):
     if not os.path.exists(hot_pixel_coords_file):
