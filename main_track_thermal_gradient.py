@@ -1,3 +1,5 @@
+import os
+import numpy as np
 from thermal_gradient_analysis import (
     track_melt_pool_boundary_and_gradient,
     visualize_hot_pixels,
@@ -6,76 +8,56 @@ from thermal_gradient_analysis import (
     plot_velocity_time_graph
 )
 
-import numpy as np
-import os
-
 if __name__ == "__main__":
-    # Configuration
+    # Config
     temp_matrix_dir = "temperature_matrices"
-    pixel_resolution_um = 31.3  # micrometers per pixel
-    pixel_resolution_m = pixel_resolution_um * 1e-6  # convert to meters for tracking
-    time_interval = 0.0125  # seconds per frame
+    pixel_resolution_um = 31.3  # micrometers
+    pixel_resolution_m = pixel_resolution_um * 1e-6
+    time_interval = 0.0125  # seconds
 
-    # Step 1: Track melt pool and gradients
+    # Output
+    output_dir = "thermal_gradient_outputs"
+    os.makedirs(output_dir, exist_ok=True)
+
+    print("==> Tracking melt pool boundary and gradients...")
     hot_pixel_coords, position_shifts, thermal_gradients = track_melt_pool_boundary_and_gradient(
         temp_dir=temp_matrix_dir,
         pixel_resolution=pixel_resolution_m
     )
 
-    # Output directory setup
-    os.makedirs("thermal_gradient_outputs", exist_ok=True)
+    np.save(f"{output_dir}/hot_pixel_coords.npy", np.array(hot_pixel_coords, dtype=object))
+    np.save(f"{output_dir}/position_shifts.npy", np.array(position_shifts, dtype=object))
+    np.save(f"{output_dir}/thermal_gradients.npy", np.array(thermal_gradients, dtype=object))
+    print(f"[✓] Saved gradient arrays to '{output_dir}'")
 
-    # Step 2: Save arrays
-    np.save("thermal_gradient_outputs/hot_pixel_coords.npy", np.array(hot_pixel_coords, dtype=object))
-    np.save("thermal_gradient_outputs/position_shifts.npy", np.array(position_shifts, dtype=object))
-    np.save("thermal_gradient_outputs/thermal_gradients.npy", np.array(thermal_gradients, dtype=object))
-
-    print("Tracking complete.")
-    print(f"Frames processed: {len(position_shifts)}")
-    print("Data saved to 'thermal_gradient_outputs/'")
-
-    # Step 3: Visualize hot pixels
+    print("==> Visualizing hot pixel frames...")
     visualize_hot_pixels(
-        hot_pixel_coords_file="thermal_gradient_outputs/hot_pixel_coords.npy",
-        output_dir="thermal_gradient_outputs/hot_pixel_frames"
+        hot_pixel_coords_file=f"{output_dir}/hot_pixel_coords.npy",
+        output_dir=f"{output_dir}/hot_pixel_frames"
     )
 
-    # Step 4: Normal velocity calculation
-    pixel_velocities = calculate_pixel_velocities(
-        position_shifts=position_shifts,
-        pixel_resolution=pixel_resolution_um,  # micrometers
-        time_step=time_interval
-    )
+    print("==> Plotting average unweighted velocity...")
+    unweighted = calculate_pixel_velocities(position_shifts, pixel_resolution_um, time_interval)
+    plot_velocity_time_graph(unweighted, output_path=f"{output_dir}/velocity_avg_unweighted.png")
 
-    plot_velocity_time_graph(
-        pixel_velocities=pixel_velocities,
-        output_path="thermal_gradient_outputs/velocity_plot_unweighted.png"
-    )
-
-    # Step 5: Weighted velocity for pixels in 1385–1450°C
-    weighted_velocities = calculate_weighted_velocities(
+    print("==> Plotting weighted velocity (1385–1450 °C)...")
+    weighted_1385 = calculate_weighted_velocities(
         temp_dir=temp_matrix_dir,
         position_shifts=position_shifts,
-        temp_range=(1385, 1450),
+        temp_range=(1000, 1800),
         pixel_resolution=pixel_resolution_um,
         time_step=time_interval
     )
+    plot_velocity_time_graph(weighted_1385, output_path=f"{output_dir}/velocity_weighted_1385_1450.png")
 
-    plot_velocity_time_graph(
-        pixel_velocities=weighted_velocities,
-        output_path="thermal_gradient_outputs/velocity_plot_weighted_1385_1450.png"
-    )
-
-    # Optional: Add another weighted plot for >1600°C
-    weighted_velocities_1600 = calculate_weighted_velocities(
+    print("==> Plotting weighted velocity (>1600 °C)...")
+    weighted_1600 = calculate_weighted_velocities(
         temp_dir=temp_matrix_dir,
         position_shifts=position_shifts,
         temp_range=(1600, float('inf')),
         pixel_resolution=pixel_resolution_um,
         time_step=time_interval
     )
+    plot_velocity_time_graph(weighted_1600, output_path=f"{output_dir}/velocity_weighted_gt1600.png")
 
-    plot_velocity_time_graph(
-        pixel_velocities=weighted_velocities_1600,
-        output_path="thermal_gradient_outputs/velocity_plot_weighted_gt1600.png"
-    )
+    print("==> DONE. Check output folder:", output_dir)

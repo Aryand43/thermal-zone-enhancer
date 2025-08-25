@@ -19,6 +19,12 @@ def track_melt_pool_boundary_and_gradient(temp_dir: str, pixel_resolution: float
         prev_coords = hot_pixel_coords[i - 1]
         curr_coords = hot_pixel_coords[i]
 
+        if prev_coords.size == 0 or curr_coords.size == 0:
+            position_shifts.append([])
+            thermal_gradients.append([])
+            print(f"[Frame {i}] No valid gradients or displacements.")
+            continue
+
         prev_rows = set(tuple(r) for r in prev_coords[:, 0:1])
         curr_rows = set(tuple(r) for r in curr_coords[:, 0:1])
         common_rows = np.array(list(prev_rows & curr_rows)).flatten()
@@ -37,30 +43,50 @@ def track_melt_pool_boundary_and_gradient(temp_dir: str, pixel_resolution: float
             curr_mean_col = np.mean(curr_cols)
 
             dx = abs(curr_mean_col - prev_mean_col)
+            if dx == 0:
+                continue
+
+            try:
+                prev_temp = np.load(os.path.join(temp_dir, file_names[i - 1]))[row, int(prev_mean_col)]
+                curr_temp = np.load(os.path.join(temp_dir, file_names[i]))[row, int(curr_mean_col)]
+                dT = curr_temp - prev_temp
+                grad = dT / (dx * pixel_resolution + 1e-8)
+            except:
+                continue
+
             dxs.append(dx)
-
-            prev_temp = np.load(os.path.join(temp_dir, file_names[i - 1]))[row, int(prev_mean_col)]
-            curr_temp = np.load(os.path.join(temp_dir, file_names[i]))[row, int(curr_mean_col)]
-            dT = curr_temp - prev_temp
-
-            grad = dT / (dx * pixel_resolution + 1e-8)
             grads.append(grad)
+
+        if not dxs or not grads:
+            position_shifts.append([])
+            thermal_gradients.append([])
+            print(f"[Frame {i}] No valid gradients or displacements.")
+            continue
 
         position_shifts.append(dxs)
         thermal_gradients.append(grads)
 
+        avg_dx = np.mean(dxs)
+        avg_grad = np.mean(grads)
+        print(f"[Frame {i}] Avg dx: {avg_dx:.2f} px | Avg grad: {avg_grad:.2f} °C/m")
+
     return hot_pixel_coords, position_shifts, thermal_gradients
+
 
 def calculate_pixel_velocities(position_shifts, pixel_resolution=31.3, time_step=0.0125):
     pixel_velocities = []
     for shifts in position_shifts:
+        if not shifts:
+            pixel_velocities.append([])
+            continue
         velocities = [(abs(dx) * pixel_resolution) / time_step for dx in shifts]
         pixel_velocities.append(velocities)
     return pixel_velocities
 
 def calculate_weighted_velocities(temp_dir, position_shifts, temp_range, pixel_resolution, time_step):
     velocity_per_frame = []
-    temp_files = sorted([f for f in os.listdir(temp_dir) if f.endswith('.npy')])
+    temp_files = sorted([f for f in os.listdir(temp_dir) if f.endswith('.npy')],
+                        key=lambda x: int(os.path.splitext(x)[0]))
 
     for idx, temp_file in enumerate(temp_files[1:], start=1):
         try:
@@ -75,6 +101,10 @@ def calculate_weighted_velocities(temp_dir, position_shifts, temp_range, pixel_r
             continue
 
         mean_dx = np.mean([abs(dx) for dx in shifts])
+        if np.isnan(mean_dx) or np.isinf(mean_dx):
+            velocity_per_frame.append(0)
+            continue
+
         mask = (curr_temp_matrix >= temp_range[0]) & (curr_temp_matrix <= temp_range[1])
         weight = np.sum(mask)
 
@@ -89,7 +119,12 @@ def calculate_weighted_velocities(temp_dir, position_shifts, temp_range, pixel_r
     return velocity_per_frame
 
 def plot_velocity_time_graph(pixel_velocities, output_path="thermal_gradient_outputs/velocity_plot.png"):
-    avg_velocities = [np.nanmean(v) if len(v) > 0 else np.nan for v in pixel_velocities]
+    # Handle flat list (weighted) vs nested list (unweighted)
+    if isinstance(pixel_velocities[0], (int, float, np.number)):
+        avg_velocities = pixel_velocities
+    else:
+        avg_velocities = [np.mean(v) if len(v) > 0 else 0 for v in pixel_velocities]
+
     time_points = [i * 0.0125 for i in range(len(avg_velocities))]
 
     plt.figure(figsize=(8, 5))

@@ -6,7 +6,7 @@ import time
 from skimage.color import rgb2lab, deltaE_ciede2000
 import matplotlib.pyplot as plt
 
-def map_temperatures_from_lut(image_path: str, lut_path: str, save_path: str, delta_e_threshold: float = 25.0) -> np.ndarray:
+def map_temperatures_from_lut(image_path: str, lut_path: str, save_path: str, delta_e_threshold: float = 35.0) -> np.ndarray:
     """
     Maps per-pixel temperatures from thermal imagery using RGB-to-temperature LUT
     with ΔE-CIEDE2000 precision filtering.
