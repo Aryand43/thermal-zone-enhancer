@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.npy
+*.tiff
+*.png
+*.jpg
+*.pb
+*.log
+
