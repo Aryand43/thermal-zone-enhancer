@@ -7,13 +7,14 @@ from thermal_gradient_analysis import (
     calculate_weighted_velocities,
     plot_velocity_time_graph
 )
-
+from config_material import MATERIAL_CONFIG
 if __name__ == "__main__":
     # Config
     temp_matrix_dir = "temperature_matrices"
-    pixel_resolution_um = 31.3  # micrometers
+    pixel_resolution_um = MATERIAL_CONFIG["pixel_resolution_um"]
     pixel_resolution_m = pixel_resolution_um * 1e-6
-    time_interval = 0.0125  # seconds
+    frame_rate = MATERIAL_CONFIG["frame_rate"]
+    time_interval = 1.0 / frame_rate
 
     # Output
     output_dir = "thermal_gradient_outputs"
@@ -38,6 +39,7 @@ if __name__ == "__main__":
 
     print("==> Plotting average unweighted velocity...")
     unweighted = calculate_pixel_velocities(position_shifts, pixel_resolution_um, time_interval)
+    np.save(f"{output_dir}/velocity_unweighted.npy", np.array(unweighted, dtype=object))
     plot_velocity_time_graph(unweighted, output_path=f"{output_dir}/velocity_avg_unweighted.png")
 
     print("==> Plotting weighted velocity (1385–1450 °C)...")
@@ -48,6 +50,7 @@ if __name__ == "__main__":
         pixel_resolution=pixel_resolution_um,
         time_step=time_interval
     )
+    np.save(f"{output_dir}/velocity_weighted_1385_1450.npy", np.array(weighted_1385))
     plot_velocity_time_graph(weighted_1385, output_path=f"{output_dir}/velocity_weighted_1385_1450.png")
 
     print("==> Plotting weighted velocity (>1600 °C)...")
@@ -58,6 +61,7 @@ if __name__ == "__main__":
         pixel_resolution=pixel_resolution_um,
         time_step=time_interval
     )
+    np.save(f"{output_dir}/velocity_weighted_gt1600.npy", np.array(weighted_1600))
     plot_velocity_time_graph(weighted_1600, output_path=f"{output_dir}/velocity_weighted_gt1600.png")
 
     print("==> DONE. Check output folder:", output_dir)

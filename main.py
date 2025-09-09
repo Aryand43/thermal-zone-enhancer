@@ -2,12 +2,13 @@ import os
 import cv2
 import numpy as np
 from typing import Tuple
+
 from thermal_roi_detection import detect_thermal_zone, crop_to_zone
-from resolution_enhancement import enhance_resolution
+from resolution_enhancement import upsample_using_lanczos
 from adaptive_sharpening import (
-    adaptive_enhance_thermal_image,
-    guided_sharpen_thermal_image,
-    apply_super_resolution
+    apply_clahe_and_edge_enhancement,
+    guided_filter_and_unsharp_mask,
+    apply_edsr_and_lab_refinement
 )
 
 input_dir = "data"
@@ -42,16 +43,18 @@ def run_quality_enhancement_and_final_postprocess():
         if image is None:
             continue
         try:
-            enhanced = enhance_resolution(image, scale=4)
+            # Resolution enhancement
+            enhanced = upsample_using_lanczos(image, scale=4)
             output_path_stage2 = os.path.join(output2_dir, filename)
             cv2.imwrite(output_path_stage2, enhanced)
 
-            adaptively_enhanced = adaptive_enhance_thermal_image(enhanced)
-            sharpened = guided_sharpen_thermal_image(adaptively_enhanced)
-            super_res = apply_super_resolution(sharpened, model_path='EDSR_x4.pb', scale=4)
+            # Adaptive enhancement and post-processing
+            adaptively_enhanced = apply_clahe_and_edge_enhancement(enhanced)
+            sharpened = guided_filter_and_unsharp_mask(adaptively_enhanced)
+            final_output = apply_edsr_and_lab_refinement(sharpened)
 
             output_path_stage3 = os.path.join(output3_dir, filename)
-            cv2.imwrite(output_path_stage3, super_res)
+            cv2.imwrite(output_path_stage3, final_output)
         except Exception as e:
             print(f"Error processing {filename}: {e}")
             continue

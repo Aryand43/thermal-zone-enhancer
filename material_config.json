@@ -1,0 +1,7 @@
+{
+  "material_name": "Ti-6Al-4V",
+  "liquidus_temp": 1450.0,
+  "solidus_temp": 1380.0,
+  "pixel_resolution_um": 31.3,
+  "frame_rate": 80.0
+}

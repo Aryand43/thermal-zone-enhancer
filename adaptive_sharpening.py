@@ -53,7 +53,7 @@ def guided_filter_and_unsharp_mask(image: np.ndarray) -> np.ndarray:
     print(f"Guided sharpening latency: {time.time() - start:.6f} seconds")
     return np.clip(sharp, 0, 255).astype(np.uint8)
 
-def apply_edsr_and_lab_refinement(image: np.ndarray, model_path: str = 'EDSR_x2.pb', scale: int = 2) -> np.ndarray:
+def apply_edsr_and_lab_refinement(image: np.ndarray, model_path: str = 'EDSR_x4.pb', scale: int = 2) -> np.ndarray:
     """
     Applies deep learning-based super-resolution (EDSR) followed by LAB-based 
     perceptual refinement using histogram equalization and sharpening.

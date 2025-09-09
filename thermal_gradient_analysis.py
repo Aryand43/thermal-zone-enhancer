@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from config_material import MATERIAL_CONFIG
 
 def track_melt_pool_boundary_and_gradient(temp_dir: str, pixel_resolution: float = 31.3e-6):
     file_names = sorted([f for f in os.listdir(temp_dir) if f.endswith('.npy')],
@@ -12,7 +13,10 @@ def track_melt_pool_boundary_and_gradient(temp_dir: str, pixel_resolution: float
 
     for file in file_names:
         temp_matrix = np.load(os.path.join(temp_dir, file))
-        coords = np.argwhere((temp_matrix >= 1385) & (temp_matrix <= 1450))
+        liquidus = MATERIAL_CONFIG["liquidus_temp"]
+        solidus = MATERIAL_CONFIG["solidus_temp"]
+
+        coords = np.argwhere((temp_matrix >= solidus) & (temp_matrix <= liquidus))        
         hot_pixel_coords.append(coords)
 
     for i in range(1, len(hot_pixel_coords)):
