@@ -1,67 +1,104 @@
 import os
+import cv2
 import numpy as np
-from thermal_gradient_analysis import (
-    track_melt_pool_boundary_and_gradient,
-    visualize_hot_pixels,
-    calculate_pixel_velocities,
-    calculate_weighted_velocities,
-    plot_velocity_time_graph
-)
-from config_material import MATERIAL_CONFIG
+import matplotlib.pyplot as plt
+from typing import List, Tuple
+from scipy.ndimage import gaussian_filter
+
+TEMP_DIR = "temperature_matrices"
+GRADIENT_DIR = "thermal_gradient_outputs"
+FRAME_DIR = "video_frames"
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(GRADIENT_DIR, exist_ok=True)
+os.makedirs(FRAME_DIR, exist_ok=True)
+
+def extract_frames_from_video(video_path: str, output_dir: str) -> List[str]:
+    cap = cv2.VideoCapture(video_path)
+    frame_paths = []
+    idx = 0
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        path = os.path.join(output_dir, f"frame_{idx+1}.png")
+        cv2.imwrite(path, gray)
+        frame_paths.append(path)
+        idx += 1
+    cap.release()
+    return frame_paths
+
+def compute_temperature_matrix(frame: np.ndarray) -> np.ndarray:
+    frame = frame.astype(np.float32)
+    frame = cv2.normalize(frame, None, 1000, 1800, cv2.NORM_MINMAX)
+    return frame
+
+def detect_thermal_zone(temperature_matrix: np.ndarray) -> Tuple[int, int, int, int]:
+    blurred = cv2.GaussianBlur(temperature_matrix, (5, 5), 0)
+    _, thresh = cv2.threshold(blurred, 1450, 2000, cv2.THRESH_BINARY)
+    thresh_uint8 = np.uint8(thresh > 0) * 255
+    contours, _ = cv2.findContours(thresh_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if contours:
+        largest = max(contours, key=cv2.contourArea)
+        return cv2.boundingRect(largest)
+    return (0, 0, temperature_matrix.shape[1], temperature_matrix.shape[0])
+
+def compute_velocity_and_gradients(
+    temp_matrices: List[np.ndarray],
+    bboxes: List[Tuple[int, int, int, int]],
+    dt: float,
+    pixel_resolution_um: float
+):
+    velocity_unweighted, velocity_w1, velocity_w2, gradients = [], [], [], []
+    for i in range(1, len(temp_matrices)):
+        x, y, w, h = bboxes[i]
+        prev = temp_matrices[i - 1][y:y+h, x:x+w]
+        curr = temp_matrices[i][y:y+h, x:x+w]
+        delta = curr - prev
+        dx = delta / dt
+        g = np.linalg.norm(dx, axis=0) if dx.ndim == 3 else dx
+        mean_v = np.mean(g)
+        velocity_unweighted.append(mean_v)
+        mask1 = (curr >= 1385) & (curr <= 1450)
+        mask2 = curr > 1600
+        v1 = np.mean(g[mask1]) if np.any(mask1) else 0
+        v2 = np.mean(g[mask2]) if np.any(mask2) else 0
+        velocity_w1.append(v1)
+        velocity_w2.append(v2)
+        gradients.append(np.abs(curr - prev))
+    return velocity_unweighted, velocity_w1, velocity_w2, gradients
+
+def save_visualizations(v_u, v_w1, v_w2, gradients):
+    np.save(os.path.join(GRADIENT_DIR, "velocity_unweighted.npy"), v_u)
+    np.save(os.path.join(GRADIENT_DIR, "velocity_weighted_1385_1450.npy"), v_w1)
+    np.save(os.path.join(GRADIENT_DIR, "velocity_weighted_gt1600.npy"), v_w2)
+    np.save(os.path.join(GRADIENT_DIR, "thermal_gradients.npy"), gradients)
+    for name, data in zip([
+        "velocity_avg_unweighted.png",
+        "velocity_weighted_1385_1450.png",
+        "velocity_weighted_gt1600.png"], [v_u, v_w1, v_w2]):
+        plt.figure()
+        plt.plot(data)
+        plt.xlabel("Frame")
+        plt.ylabel("Velocity")
+        plt.title(name.replace("_", " ").replace(".png", ""))
+        plt.savefig(os.path.join(GRADIENT_DIR, name))
+        plt.close()
+
+def main():
+    video_path = "input_video.mp4"
+    dt = 1.0 / 80
+    resolution = 80
+    frame_paths = extract_frames_from_video(video_path, FRAME_DIR)
+    temp_matrices, bboxes = [], []
+    for i, path in enumerate(frame_paths):
+        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        temp = compute_temperature_matrix(img)
+        np.save(os.path.join(TEMP_DIR, f"{i+1}.npy"), temp)
+        temp_matrices.append(temp)
+        bboxes.append(detect_thermal_zone(temp))
+    v_u, v_w1, v_w2, gradients = compute_velocity_and_gradients(temp_matrices, bboxes, dt, resolution)
+    save_visualizations(v_u, v_w1, v_w2, gradients)
+
 if __name__ == "__main__":
-    # Config
-    temp_matrix_dir = "temperature_matrices"
-    pixel_resolution_um = MATERIAL_CONFIG["pixel_resolution_um"]
-    pixel_resolution_m = pixel_resolution_um * 1e-6
-    frame_rate = MATERIAL_CONFIG["frame_rate"]
-    time_interval = 1.0 / frame_rate
-
-    # Output
-    output_dir = "thermal_gradient_outputs"
-    os.makedirs(output_dir, exist_ok=True)
-
-    print("==> Tracking melt pool boundary and gradients...")
-    hot_pixel_coords, position_shifts, thermal_gradients = track_melt_pool_boundary_and_gradient(
-        temp_dir=temp_matrix_dir,
-        pixel_resolution=pixel_resolution_m
-    )
-
-    np.save(f"{output_dir}/hot_pixel_coords.npy", np.array(hot_pixel_coords, dtype=object))
-    np.save(f"{output_dir}/position_shifts.npy", np.array(position_shifts, dtype=object))
-    np.save(f"{output_dir}/thermal_gradients.npy", np.array(thermal_gradients, dtype=object))
-    print(f"[✓] Saved gradient arrays to '{output_dir}'")
-
-    print("==> Visualizing hot pixel frames...")
-    visualize_hot_pixels(
-        hot_pixel_coords_file=f"{output_dir}/hot_pixel_coords.npy",
-        output_dir=f"{output_dir}/hot_pixel_frames"
-    )
-
-    print("==> Plotting average unweighted velocity...")
-    unweighted = calculate_pixel_velocities(position_shifts, pixel_resolution_um, time_interval)
-    np.save(f"{output_dir}/velocity_unweighted.npy", np.array(unweighted, dtype=object))
-    plot_velocity_time_graph(unweighted, output_path=f"{output_dir}/velocity_avg_unweighted.png")
-
-    print("==> Plotting weighted velocity (1385–1450 °C)...")
-    weighted_1385 = calculate_weighted_velocities(
-        temp_dir=temp_matrix_dir,
-        position_shifts=position_shifts,
-        temp_range=(1000, 1800),
-        pixel_resolution=pixel_resolution_um,
-        time_step=time_interval
-    )
-    np.save(f"{output_dir}/velocity_weighted_1385_1450.npy", np.array(weighted_1385))
-    plot_velocity_time_graph(weighted_1385, output_path=f"{output_dir}/velocity_weighted_1385_1450.png")
-
-    print("==> Plotting weighted velocity (>1600 °C)...")
-    weighted_1600 = calculate_weighted_velocities(
-        temp_dir=temp_matrix_dir,
-        position_shifts=position_shifts,
-        temp_range=(1600, float('inf')),
-        pixel_resolution=pixel_resolution_um,
-        time_step=time_interval
-    )
-    np.save(f"{output_dir}/velocity_weighted_gt1600.npy", np.array(weighted_1600))
-    plot_velocity_time_graph(weighted_1600, output_path=f"{output_dir}/velocity_weighted_gt1600.png")
-
-    print("==> DONE. Check output folder:", output_dir)
+    main()
