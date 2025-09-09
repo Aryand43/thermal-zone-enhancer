@@ -79,7 +79,7 @@ if run_analysis:
 if os.path.exists(TEMP_DIR):
     st.subheader("Frame-wise Temperature Visualization")
     frame_files = sorted([f for f in os.listdir(TEMP_DIR) if f.endswith(".npy")])
-    
+
     if frame_files:
         frame_names = [f.replace(".npy", "") for f in frame_files]
         frame_id = st.selectbox("Select Frame ID", frame_names)
